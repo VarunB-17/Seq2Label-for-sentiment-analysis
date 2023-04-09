@@ -7,6 +7,7 @@ import numpy as np
 from data_rnn import load_imdb
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torch.nn.functional import pad
 
 
 def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -33,8 +34,8 @@ def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
     df_test = df_test.sort_values(by=['len'])
 
     # convert list to tensor
-    df_train['x_train'] = df_train['x_train'].apply(lambda x: torch.tensor(x, dtype=torch.long, device=cuda0))
-    df_train['y_train'] = df_train['y_train'].apply(lambda x: torch.tensor(x, dtype=torch.long, device=cuda0))
+    df_train['x_train'] = df_train['x_train'].apply(lambda x: torch.tensor(x, dtype=torch.long))
+    df_train['y_train'] = df_train['y_train'].apply(lambda x: torch.tensor(x, dtype=torch.long))
 
     return df_train, df_test
 
@@ -50,9 +51,18 @@ def get_device():
 
 
 def padding(df):
+    chunk = np.array_split(df, 32)
 
-    df
-    return None
+    for batch in chunk[0:1]:
+        max_tokens = (batch.tail(1).iloc[0]).size()[0]
+        print(max_tokens)
+        print(len(batch))
+        for ts in batch:
+            print(ts)
+            padded_tensor = pad(ts,(0,max_tokens))
+            print(padded_tensor)
+
+    return True
 
 
 class DataSentiment(Dataset):
@@ -60,7 +70,7 @@ class DataSentiment(Dataset):
         self.val = val
         self.df = data2df(val)
         self.x_train = padding(self.df[0]['x_train'])
-        self.y_train = padding(self.df[0]['y_train'])
+        self.y_train = self.df[0]['y_train']
 
     def __len__(self):
         return len(self.y_train)
@@ -68,10 +78,7 @@ class DataSentiment(Dataset):
     def __getitem__(self, item):
         return self.x_train[item], self.y_train[item]
 
-cuda0 = get_device()
-data = DataSentiment(val=False)
-print(data.x_train[0])
-print(type(data.x_train))
-print(type(data.x_train[0]))
+#cuda0 = get_device()
+#data = DataSentiment(val=False)
+#print(data.x_train)
 
-np.array_split(df, 3)
