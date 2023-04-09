@@ -53,16 +53,15 @@ def get_device():
 def padding(df):
     chunk = np.array_split(df, 32)
 
-    for batch in chunk[0:1]:
-        max_tokens = (batch.tail(1).iloc[0]).size()[0]
-        print(max_tokens)
-        print(len(batch))
-        for ts in batch:
-            print(ts)
-            padded_tensor = pad(ts,(0,max_tokens))
-            print(padded_tensor)
+    sequence = []
 
-    return True
+    for batch in chunk:
+        max_tokens = (batch.tail(1).iloc[0]).size()[0]
+        for ts in batch:
+            padded_tensor = pad(ts, (0, max_tokens))
+            sequence.append(padded_tensor)
+
+    return sequence
 
 
 class DataSentiment(Dataset):
@@ -71,14 +70,10 @@ class DataSentiment(Dataset):
         self.df = data2df(val)
         self.x_train = padding(self.df[0]['x_train'])
         self.y_train = self.df[0]['y_train']
+        self.x_test = self.df[1]['x_test']
+        self.y_test = self.df[1]['y_test']
 
-    def __len__(self):
-        return len(self.y_train)
 
-    def __getitem__(self, item):
-        return self.x_train[item], self.y_train[item]
-
-#cuda0 = get_device()
-#data = DataSentiment(val=False)
-#print(data.x_train)
-
+cuda0 = get_device()
+data = DataSentiment(val=False)
+print(data.x_train[15000])
