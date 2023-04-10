@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.functional import pad
 
-CLS, BATCHES, MAX_TOKENS, BUCKETS = 2, 64, 16384, 256
+CLS, BATCHES, MAX_TOKENS = 2, 512, 32768
 
 
 def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -68,13 +68,10 @@ def padding(batches):
     for batch in batches:
         sequences = [x[0] for x in batch]
         labels = [x[1] for x in batch]
-        max_tensor = sequences[-1].size()[0]
-        padded_seq = [pad(seq, (0, max_tensor), 'constant', 0) for seq in sequences]
-        padded_batches.append(padded_seq)
+        padded_seq = torch.nn.utils.rnn.pad_sequence(sequences, batch_first=True, padding_value=0)
+        padded_batches.append((padded_seq, torch.tensor(labels)))
 
-    truncated_batches = truncate(padded_batches)
-
-    return truncated_batches
+    return padded_batches
 
 def get_device():
     """
@@ -122,10 +119,9 @@ class DynamicBatchLoader(DataLoader):
     the DatasetSentiment class object.
     """
 
-    def __init__(self, dataset, max_tokens, batches, bucket_size):
-        super().__init__(dataset, batch_size=batches, collate_fn=self.collate_fn)
+    def __init__(self, dataset, max_tokens, batch_size):
+        super().__init__(dataset, batch_size=batch_size, collate_fn=self.collate_fn,shuffle=False)
         self.max_tokens = max_tokens
-        self.bucket_size = bucket_size
 
     def collate_fn(self, batch):
         """
@@ -139,8 +135,8 @@ class DynamicBatchLoader(DataLoader):
 
         # create buckets from the sorted data
         buckets = []
-        for i in range(0, len(batch), self.bucket_size):
-            bucket = batch[i:i + self.bucket_size]
+        for i in range(0, len(batch), self.batch_size):
+            bucket = batch[i:i + self.batch_size]
             buckets.append(bucket)
 
         # dynamic length batches using the buckets and max_tokens
@@ -160,6 +156,5 @@ class DynamicBatchLoader(DataLoader):
             if len(batch) > 0:
                 batches.append(batch)
 
-        self.padded_sequences = padding(batches)
-
-        return self.padded_sequences
+        padded_sequences = padding(batches)
+        return padded_sequences
