@@ -158,6 +158,6 @@ class DynamicBatchLoader(DataLoader):
             if len(batch) > 0:
                 batches.append(batch)
 
-        padded_sequences = padding(batches)
+        self.padded_sequences = padding(batches)
 
-        return padded_sequences
+        return self.padded_sequences
