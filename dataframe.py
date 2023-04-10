@@ -9,8 +9,14 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.functional import pad
 
+CLS, BUCKETS, BATCHES, MAX_TOKENS = 2, 256, 64, 16384
+
 
 def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Converts the raw data into a pandas dataframe,
+    and converts the list with integers into tensors.
+    """
     # load data
     (x_train, y_train), (x_test, y_test), (i2w, w2i), _ = load_imdb(final=val)
 
@@ -41,6 +47,9 @@ def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 
 def get_device():
+    """
+    Run on cpu
+    """
     if torch.cuda.is_available():
         device = torch.device('cuda:0')
     else:
@@ -51,29 +60,58 @@ def get_device():
 
 
 def padding(df):
-    chunk = np.array_split(df, 32)
+    """
 
+    """
+    buckets = np.array_split(df, BUCKETS)
     sequence = []
 
-    for batch in chunk:
-        max_tokens = (batch.tail(1).iloc[0]).size()[0]
-        for ts in batch:
+    for bucket in buckets:
+        print(len(bucket))
+
+    for bucket in buckets:
+        max_tokens = (bucket.tail(1).iloc[0]).size()[0]
+        for ts in bucket:
             padded_tensor = pad(ts, (0, max_tokens))
             sequence.append(padded_tensor)
 
     return sequence
 
 
-class DataSentiment(Dataset):
+class DatasetSentiment(Dataset):
+    """
+    Custom Dataset class for
+    the IMDB reviews dataset.
+    """
     def __init__(self, val=False):
         self.val = val
         self.df = data2df(val)
-        self.x_train = padding(self.df[0]['x_train'])
+        self.x_train = self.df[0]['x_train']
         self.y_train = self.df[0]['y_train']
-        self.x_test = self.df[1]['x_test']
-        self.y_test = self.df[1]['y_test']
 
+    def __len__(self):
+        """
+        returns the amount of instances
+        present in the training data.
+        """
+        return len(self.x_train)
 
-cuda0 = get_device()
-data = DataSentiment(val=False)
-print(data.x_train[15000])
+    def __getitem__(self, index):
+        """
+        return
+        """
+        self.sequence = self.x_train[index]
+        self.label = self.y_train[index]
+        return self.sequence, self.label
+
+class DynamicBatch(DataLoader):
+    """
+    Creates dynamic batches from
+    the DatasetSentiment class object.
+    """
+
+    def __init__(self,dataset,max_tokens,buckets,batches):
+        self.dataset = dataset
+        self.max_tokens = max_tokens
+        self.buckets = buckets
+        self.batches = batches
