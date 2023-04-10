@@ -101,7 +101,7 @@ class DatasetSentiment(Dataset):
         return
         """
 
-        return self.x_train[index], self.label[index]
+        return self.x_train[index], self.y_train[index]
 
 class DynamicBatch(DataLoader):
     """
