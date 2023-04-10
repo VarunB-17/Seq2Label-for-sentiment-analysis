@@ -51,6 +51,8 @@ def truncate(batches):
     amount of tokens allowed for
     each batch in the set of batches.
     """
+    # currently no truncation is applied.
+    return batches
 
 
 def padding(batches):
