@@ -3,13 +3,12 @@ Loads the IMDB dataset as a pandas dataframe
 in order to perform basic visualization.
 """
 import pandas as pd
-import numpy as np
 from data_rnn import load_imdb
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.functional import pad
 
-CLS, BUCKETS, BATCHES, MAX_TOKENS = 2, 256, 64, 16384
+CLS, BATCHES, MAX_TOKENS, BUCKETS = 2, 64, 16384, 256
 
 
 def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -45,6 +44,35 @@ def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
 
     return df_train, df_test
 
+def truncate(batches):
+    """
+    truncates a list of tensor
+    to the length of the required
+    amount of tokens allowed for
+    each batch in the set of batches.
+    """
+
+
+def padding(batches):
+    """
+    pads batches according
+    to the longest sequence
+    in a batch and truncates
+    each batch until max_tokens
+    is reached.
+    """
+
+    padded_batches = []
+    for batch in batches:
+        sequences = [x[0] for x in batch]
+        labels = [x[1] for x in batch]
+        max_tensor = sequences[-1].size()[0]
+        padded_seq = [pad(seq, (0, max_tensor), 'constant', 0) for seq in sequences]
+        padded_batches.append(padded_seq)
+
+    truncated_batches = truncate(padded_batches)
+
+    return truncated_batches
 
 def get_device():
     """
@@ -59,30 +87,12 @@ def get_device():
     return device
 
 
-def padding(df):
-    """
-
-    """
-    buckets = np.array_split(df, BUCKETS)
-    sequence = []
-
-    for bucket in buckets:
-        print(len(bucket))
-
-    for bucket in buckets:
-        max_tokens = (bucket.tail(1).iloc[0]).size()[0]
-        for ts in bucket:
-            padded_tensor = pad(ts, (0, max_tokens))
-            sequence.append(padded_tensor)
-
-    return sequence
-
-
 class DatasetSentiment(Dataset):
     """
     Custom Dataset class for
     the IMDB reviews dataset.
     """
+
     def __init__(self, val=False):
         self.val = val
         self.df = data2df(val)
@@ -103,14 +113,51 @@ class DatasetSentiment(Dataset):
 
         return self.x_train[index], self.y_train[index]
 
-class DynamicBatch(DataLoader):
+
+class DynamicBatchLoader(DataLoader):
     """
     Creates dynamic batches from
     the DatasetSentiment class object.
     """
 
-    def __init__(self,dataset,max_tokens,buckets,batches):
-        self.dataset = dataset
+    def __init__(self, dataset, max_tokens, batches, bucket_size):
+        super().__init__(dataset, batch_size=batches, collate_fn=self.collate_fn)
         self.max_tokens = max_tokens
-        self.buckets = buckets
-        self.batches = batches
+        self.bucket_size = bucket_size
+
+    def collate_fn(self, batch):
+        """
+        creates batches using dynamic batching
+        with buckets where each batch is filled
+        with the instances of a bucket until
+        the max_tokens property is reached.
+        source: https://rashmi-margani.medium.com/how-to-speed-up-the-training-
+        of-the-sequence-model-using-bucketing-techniques-9e302b0fd976
+        """
+
+        # create buckets from the sorted data
+        buckets = []
+        for i in range(0, len(batch), self.bucket_size):
+            bucket = batch[i:i + self.bucket_size]
+            buckets.append(bucket)
+
+        # dynamic length batches using the buckets and max_tokens
+        batches = []
+        for bucket in buckets:
+            batch = []
+            token_count = 0
+            for sequence, label in bucket:
+                len_seq = sequence.size()[0]
+                if len_seq + token_count > self.max_tokens:
+                    batches.append(batch)
+                    batch = []  # reset batch list
+                    token_count = 0  # reset token count
+                batch.append((sequence, label))
+                token_count += len_seq
+            # handles cases where a bucket is empty
+            if len(batch) > 0:
+                batches.append(batch)
+
+        padded_sequences = padding(batches)
+
+        return padded_sequences
