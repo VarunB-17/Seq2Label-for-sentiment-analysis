@@ -6,9 +6,9 @@ import pandas as pd
 from data_rnn import load_imdb
 import torch
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.functional import pad
+from torch.nn.utils.rnn import pad_sequence
 
-CLS, BATCHES, MAX_TOKENS = 2, 512, 32768
+CLS, BATCHES, MAX_TOKENS = 2, 512, 64*2*2*2*2*2*2*2
 
 
 def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -35,6 +35,7 @@ def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
     # sorting data in ascending order
     df_train['len'] = df_train['x_train'].apply(lambda x: len(x))
     df_train = df_train.sort_values(by=['len'])
+
     df_test['len'] = df_test['x_test'].apply(lambda x: len(x))
     df_test = df_test.sort_values(by=['len'])
 
@@ -42,17 +43,10 @@ def data2df(val) -> tuple[pd.DataFrame, pd.DataFrame]:
     df_train['x_train'] = df_train['x_train'].apply(lambda x: torch.tensor(x, dtype=torch.long))
     df_train['y_train'] = df_train['y_train'].apply(lambda x: torch.tensor(x, dtype=torch.long))
 
-    return df_train, df_test
+    df_test['x_test'] = df_test['x_test'].apply(lambda x: torch.tensor(x, dtype=torch.long))
+    df_test['y_test'] = df_test['y_test'].apply(lambda x: torch.tensor(x, dtype=torch.long))
 
-def truncate(batches):
-    """
-    truncates a list of tensor
-    to the length of the required
-    amount of tokens allowed for
-    each batch in the set of batches.
-    """
-    # currently no truncation is applied.
-    return batches
+    return df_train, df_test
 
 
 def padding(batches):
@@ -72,6 +66,7 @@ def padding(batches):
         padded_batches.append((padded_seq, torch.tensor(labels)))
 
     return padded_batches
+
 
 def get_device():
     """
@@ -97,6 +92,15 @@ class DatasetSentiment(Dataset):
         self.df = data2df(val)
         self.x_train = self.df[0]['x_train']
         self.y_train = self.df[0]['y_train']
+        self.x_test = self.df[1]['x_test']
+        self.y_test = self.df[1]['y_test']
+
+        vocab_dimension = torch.tensor([0])
+        for tens in self.x_train.values:
+            vocab_dimension = torch.cat((vocab_dimension, tens), dim=0)
+            vocab_dimension = torch.tensor([vocab_dimension.max().item()])
+
+        self.vocab_size = vocab_dimension
 
     def __len__(self):
         """
@@ -106,10 +110,6 @@ class DatasetSentiment(Dataset):
         return len(self.x_train)
 
     def __getitem__(self, index):
-        """
-        return
-        """
-
         return self.x_train[index], self.y_train[index]
 
 
@@ -120,41 +120,26 @@ class DynamicBatchLoader(DataLoader):
     """
 
     def __init__(self, dataset, max_tokens, batch_size):
-        super().__init__(dataset, batch_size=batch_size, collate_fn=self.collate_fn,shuffle=False)
         self.max_tokens = max_tokens
+        super().__init__(dataset, batch_size=batch_size, collate_fn=self.collate_fn, shuffle=False)
 
     def collate_fn(self, batch):
-        """
-        creates batches using dynamic batching
-        with buckets where each batch is filled
-        with the instances of a bucket until
-        the max_tokens property is reached.
-        source: https://rashmi-margani.medium.com/how-to-speed-up-the-training-
-        of-the-sequence-model-using-bucketing-techniques-9e302b0fd976
-        """
-
-        # create buckets from the sorted data
-        buckets = []
-        for i in range(0, len(batch), self.batch_size):
-            bucket = batch[i:i + self.batch_size]
-            buckets.append(bucket)
-
-        # dynamic length batches using the buckets and max_tokens
         batches = []
-        for bucket in buckets:
-            batch = []
-            token_count = 0
-            for sequence, label in bucket:
-                len_seq = sequence.size()[0]
-                if len_seq + token_count > self.max_tokens:
-                    batches.append(batch)
-                    batch = []  # reset batch list
-                    token_count = 0  # reset token count
-                batch.append((sequence, label))
-                token_count += len_seq
-            # handles cases where a bucket is empty
-            if len(batch) > 0:
-                batches.append(batch)
+        current_batch = []
+        current_tokens = 0
 
-        padded_sequences = padding(batches)
-        return padded_sequences
+        for sequence, label in batch:
+            seq_len = len(sequence)
+
+            if seq_len + current_tokens > self.max_tokens:
+                batches.append(current_batch)
+                current_batch = []
+                current_tokens = 0
+            current_batch.append((sequence, label))
+            current_tokens += seq_len
+
+        if current_batch:
+            batches.append(current_batch)
+
+        padded_batches = padding(batches)
+        return padded_batches
