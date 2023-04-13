@@ -1,11 +1,9 @@
-"""
-Loads the IMDB dataset as a pandas dataframe
-in order to perform basic visualization.
-"""
+# imports
 import torch
 from torch.utils.data import Dataset
 from params import MAX_TOKENS
-from batch_functions import formatted, padding, data2df, get_device, load_imdb
+from batch_functions import formatted, padding, data2df
+
 
 class DatasetSentiment(Dataset):
     """
@@ -13,17 +11,14 @@ class DatasetSentiment(Dataset):
     the IMDB reviews dataset.
     """
 
-    def __init__(self, final=False):
-        self.val = final
-        self.df = data2df(final)
-        self.x_train = self.df[0]['x_train']
-        self.y_train = self.df[0]['y_train']
-        self.x_test = self.df[1]['x_test']
-        self.y_test = self.df[1]['y_test']
+    def __init__(self, data):
+        self.data = data
+        self.sequences = data[data.columns[0]]
+        self.labels = data[data.columns[1]]
 
         # returns the size of the vocabulary
         vocab_dimension = torch.tensor([0])
-        for tens in self.x_train.values:
+        for tens in self.sequences.values:
             vocab_dimension = torch.cat((vocab_dimension, tens), dim=0)
             vocab_dimension = torch.tensor([vocab_dimension.max().item()])
 
@@ -34,14 +29,14 @@ class DatasetSentiment(Dataset):
         returns the amount of instances
         present in the training data.
         """
-        return len(self.x_train)
+        return len(self.data)
 
     def __getitem__(self, index):
         """
         returns a sequence and
         label at some index -> [index]
         """
-        return self.x_train[index], self.y_train[index]
+        return self.sequences[index], self.labels[index]
 
 
 class DynamicBatchLoader:
@@ -53,9 +48,10 @@ class DynamicBatchLoader:
     it will move to a new batch
     """
 
-    def __init__(self, dataset, max_tokens=MAX_TOKENS):
-        self.max_tokens = max_tokens # define maximum tokens allowed for each batch
-        self.dataset = dataset # original dataset
+    def __init__(self, dataset, max_tokens=MAX_TOKENS, debug=False):
+        self.max_tokens = max_tokens  # define maximum tokens allowed for each batch
+        self.dataset = dataset  # original dataset
+        self.debug = debug
 
     def dynamic(self):
         """
@@ -88,8 +84,6 @@ class DynamicBatchLoader:
 
             # case where without padding limit is exceeded
             if batch_length + sequence_length > self.max_tokens:
-                x = [x[0] for x in current_batch]
-                print(f'{x[0].size()} {len(x)} - without padding')
                 batches.append(formatted(current_batch))
                 current_batch = list()
 
@@ -100,8 +94,6 @@ class DynamicBatchLoader:
 
             # case where with padding limit is exceeded
             if batch_length > self.max_tokens:
-                x = [x[0] for x in current_batch]
-                print(f'{x[0].size()} {len(x)} with padding')
                 batches.append(formatted(current_batch))
                 current_batch = list()
                 batch_length = int(0)
@@ -110,8 +102,10 @@ class DynamicBatchLoader:
 
         # add the last batch after iteration has been completed
         if current_batch:
-            x = [x[0] for x in current_batch]
-            print(f'{x[0].size()} {len(x)} last batch')
             batches.append(formatted(current_batch))
+
+        if self.debug:
+            for i, batch in enumerate(batches):
+                print(f'Batch {i}: {batch[0].size()}')
 
         return batches

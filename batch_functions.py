@@ -1,3 +1,4 @@
+# imports
 import pandas as pd
 from data_rnn import load_imdb
 import torch
@@ -11,28 +12,21 @@ def data2df(final) -> tuple[pd.DataFrame, pd.DataFrame]:
     # load data
     (x_train, y_train), (x_test, y_test), (i2w, w2i), _ = load_imdb(final=final)
 
-    # Convert word ids to actual string representation of words (for representation)
-    words_train = [[i2w[word] for word in sent] for sent in x_train]
-    words_test = [[i2w[word] for word in sent] for sent in x_test]
-
     # Dataframes of training and test/validation data
-    df_train = pd.DataFrame({'sent': words_train,
-                             'x_train': x_train,
-                             'y_train': y_train})
-
-    df_test = pd.DataFrame({'sent': words_test,
-                            'x_test': x_test,
-                            'y_test': y_test})
+    df_train = pd.DataFrame({'x_train': x_train, 'y_train': y_train})
+    df_test = pd.DataFrame({'x_test': x_test, 'y_test': y_test})
 
     # sorting data in ascending order
     df_train['len'] = df_train['x_train'].apply(lambda x: len(x))
     df_train = df_train.sort_values(by=['len'])
+
     df_test['len'] = df_test['x_test'].apply(lambda x: len(x))
     df_test = df_test.sort_values(by=['len'])
 
     # convert training and test/validation data from lists to tensors
     df_train['x_train'] = df_train['x_train'].apply(lambda x: torch.tensor(x, dtype=torch.long))
     df_train['y_train'] = df_train['y_train'].apply(lambda x: torch.tensor(x, dtype=torch.long))
+
     df_test['x_test'] = df_test['x_test'].apply(lambda x: torch.tensor(x, dtype=torch.long))
     df_test['y_test'] = df_test['y_test'].apply(lambda x: torch.tensor(x, dtype=torch.long))
 
@@ -79,7 +73,6 @@ def formatted(batch):
     sequences = torch.stack([x[0] for x in batch], dim=0)
     labels = torch.stack([x[1] for x in batch])
     batch = [sequences, labels]
-    print(batch)
     return batch
 
 
