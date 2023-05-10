@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from params import EMBED_DIM
+from params import *
 import torch.nn.functional as F
 import math
 
@@ -67,7 +67,7 @@ def att(q, k, v, mask=False):
         mask = torch.triu(mask, diagonal=1)
         scaled += mask
     # apply softmax
-    attention = F.softmax(scaled, dim=3)
+    attention = F.softmax(scaled, dim=-1)
     # multiply qTk by value vector
     values = torch.matmul(attention, v)
     return values, attention
@@ -81,6 +81,10 @@ class MultiHeadedAttention(nn.Module):
         self.heads = heads
         self.head_dim = input_dim // heads
         self.mask = mask
+        self.concat_qkv = nn.Linear(input_dim, 3 * input_dim, bias=False)
+        self.out_linear = nn.Linear(input_dim, input_dim, bias=False)
+
+
 
     def forward(self, x):
         b, t, k = x.size()
@@ -88,9 +92,8 @@ class MultiHeadedAttention(nn.Module):
         hd = self.head_dim
         assert k == self.input_dim
         # define linear transformation to project sequence to query,key,value vectors
-        concat_qkv = nn.Linear(k, 3 * k, bias=False)
         # apply transformation
-        concat_qkv = concat_qkv(x)  # torch.Size([190, 43, 1536])
+        concat_qkv = self.concat_qkv(x)  # torch.Size([190, 43, 1536])
         # reshape last dimension to number of heads and head dimension * 3
         concat_qkv = concat_qkv.reshape(b, t, h, 3 * hd)  # torch.Size([190, 43, 4, 384])
         # swap second and third dimension
@@ -102,6 +105,5 @@ class MultiHeadedAttention(nn.Module):
         # concat all attention head
         values = values.reshape(b, t, h * hd)
         # output vector
-        out_linear = nn.Linear(k, k, bias=False)
-        out = out_linear(values)
+        out = self.out_linear(values)
         return out
